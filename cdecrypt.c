@@ -359,7 +359,7 @@ static bool find_alternative_file(const char* dir_path, const char* pattern, cha
 
     struct dirent* entry;
     while ((entry = readdir(dir)) != NULL) {
-        if (strncasecmp(entry->d_name, pattern, strlen(pattern)) == 0) {
+        if (strcasestr(entry->d_name, pattern) != NULL) {
             sprintf(out_path, "%s%c%s", dir_path, PATH_SEP, entry->d_name);
             closedir(dir);
             return true;
@@ -422,6 +422,7 @@ int main_utf8(int argc, char** argv)
     const char* pattern[] = { "%s%c%08x.app", "%s%c%08X.app", "%s%c%08x", "%s%c%08X" };
     uint8_t manual_key[16];
     bool has_manual_key = false;
+    char target_dir[PATH_MAX];
 
     if (argc < 2) {
         printf("%s %s - Wii U NUS content file decrypter\n"
@@ -435,6 +436,25 @@ int main_utf8(int argc, char** argv)
         return EXIT_SUCCESS;
     }
 
+    strncpy(target_dir, argv[1], PATH_MAX-1);
+
+    // Auto-find folder logic
+    if (!is_directory(target_dir) && !is_file(target_dir)) {
+        char fuzzy[PATH_MAX];
+        // Try in /sdcard/Download
+        sprintf(fuzzy, "/sdcard/Download/%s", target_dir);
+        if (is_directory(fuzzy)) {
+            printf("Auto-found folder in Download: %s\n", fuzzy);
+            strncpy(target_dir, fuzzy, PATH_MAX-1);
+        } else {
+            // Try fuzzy match in /sdcard/Download
+            if (find_alternative_file("/sdcard/Download", target_dir, fuzzy)) {
+                printf("Auto-found matching folder: %s\n", fuzzy);
+                strncpy(target_dir, fuzzy, PATH_MAX-1);
+            }
+        }
+    }
+
     // Check for manual hex key (32 chars)
     if (argc >= 3 && strlen(argv[2]) == 32) {
         char *endptr;
@@ -446,27 +466,27 @@ int main_utf8(int argc, char** argv)
         printf("Using manual title key: %s\n", argv[2]);
     }
 
-    if (!is_directory(argv[1])) {
+    if (!is_directory(target_dir)) {
         uint8_t* buf = NULL;
-        uint32_t size = read_file_max(argv[1], &buf, T_MAGIC_OFFSET + sizeof(uint64_t));
+        uint32_t size = read_file_max(target_dir, &buf, T_MAGIC_OFFSET + sizeof(uint64_t));
         if (size == 0)
             goto out;
         if (size >= T_MAGIC_OFFSET + sizeof(uint64_t)) {
             uint64_t magic = getbe64(&buf[T_MAGIC_OFFSET]);
             free(buf);
             if (magic == TMD_MAGIC) {
-                tmd_path = strdup(argv[1]);
+                tmd_path = strdup(target_dir);
                 if (argc < 3 || has_manual_key) {
-                    tik_path = strdup(argv[1]);
+                    tik_path = strdup(target_dir);
                     tik_path[strlen(tik_path) - 2] = 'i';
                     tik_path[strlen(tik_path) - 1] = 'k';
                 } else {
                     tik_path = strdup(argv[2]);
                 }
             } else if (magic == TIK_MAGIC) {
-                tik_path = strdup(argv[1]);
+                tik_path = strdup(target_dir);
                 if (argc < 3) {
-                    tmd_path = strdup(argv[1]);
+                    tmd_path = strdup(target_dir);
                     tmd_path[strlen(tik_path) - 2] = 'm';
                     tmd_path[strlen(tik_path) - 1] = 'd';
                 } else {
@@ -475,32 +495,32 @@ int main_utf8(int argc, char** argv)
             }
         }
 
-        // We'll need the current path for locating files, which we set in argv[1]
-        argv[1][get_trailing_slash(argv[1])] = 0;
-        if (argv[1][0] == 0) {
-            argv[1][0] = '.';
-            argv[1][1] = 0;
+        // We'll need the current path for locating files, which we set in target_dir
+        target_dir[get_trailing_slash(target_dir)] = 0;
+        if (target_dir[0] == 0) {
+            target_dir[0] = '.';
+            target_dir[1] = 0;
         }
     }
 
-    // If the condition below is true, argv[1] is a directory
+    // If the condition below is true, target_dir is a directory
     if ((tmd_path == NULL) || (tik_path == NULL)) {
-        size_t size = strlen(argv[1]);
+        size_t size = strlen(target_dir);
         free(tmd_path);
         free(tik_path);
         tmd_path = calloc(size + 16, 1);
         tik_path = calloc(size + 16, 1);
-        sprintf(tmd_path, "%s%ctitle.tmd", argv[1], PATH_SEP);
-        sprintf(tik_path, "%s%ctitle.tik", argv[1], PATH_SEP);
+        sprintf(tmd_path, "%s%ctitle.tmd", target_dir, PATH_SEP);
+        sprintf(tik_path, "%s%ctitle.tik", target_dir, PATH_SEP);
 
         // Auto-discovery logic
         if (!is_file(tmd_path)) {
-            if (find_alternative_file(argv[1], "tmd.", tmd_path)) {
+            if (find_alternative_file(target_dir, "tmd.", tmd_path)) {
                 printf("Found alternative TMD: %s\n", tmd_path);
             }
         }
         if (!has_manual_key && !is_file(tik_path)) {
-            if (find_alternative_file(argv[1], "cetk", tik_path)) {
+            if (find_alternative_file(target_dir, "cetk", tik_path)) {
                 printf("Found alternative Ticket: %s\n", tik_path);
             }
         }
@@ -515,14 +535,28 @@ int main_utf8(int argc, char** argv)
         char kpath[PATH_MAX];
         bool found_k = false;
         
-        // Try current folder
-        sprintf(kpath, "%s%ckeys.txt", argv[1], PATH_SEP);
+        // 1. Try current folder
+        sprintf(kpath, "%s%ckeys.txt", target_dir, PATH_SEP);
         if (is_file(kpath) && find_key_in_file(kpath, getbe64(&tmd->TitleID), manual_key)) found_k = true;
         
-        // Try parent folder (common for Download folders)
+        // 2. Try parent folder
         if (!found_k) {
-            sprintf(kpath, "%s%c..%ckeys.txt", argv[1], PATH_SEP, PATH_SEP);
+            sprintf(kpath, "%s%c..%ckeys.txt", target_dir, PATH_SEP, PATH_SEP);
             if (is_file(kpath) && find_key_in_file(kpath, getbe64(&tmd->TitleID), manual_key)) found_k = true;
+        }
+
+        // 3. Try global Download folder
+        if (!found_k) {
+            if (is_file("/sdcard/Download/keys.txt") && find_key_in_file("/sdcard/Download/keys.txt", getbe64(&tmd->TitleID), manual_key)) found_k = true;
+        }
+
+        // 4. Try Termux HOME
+        if (!found_k) {
+            const char* home = getenv("HOME");
+            if (home) {
+                sprintf(kpath, "%s/keys.txt", home);
+                if (is_file(kpath) && find_key_in_file(kpath, getbe64(&tmd->TitleID), manual_key)) found_k = true;
+            }
         }
 
         if (found_k) {
@@ -571,7 +605,7 @@ int main_utf8(int argc, char** argv)
     memset(iv, 0, sizeof(iv));
 
     for (uint32_t k = 0; k < (array_size(pattern) / 2); k++) {
-        sprintf(str, pattern[k], argv[1], PATH_SEP, getbe32(&tmd->Contents[0].ID));
+        sprintf(str, pattern[k], target_dir, PATH_SEP, getbe32(&tmd->Contents[0].ID));
         if (is_file(str))
             break;
     }
@@ -579,7 +613,7 @@ int main_utf8(int argc, char** argv)
     uint32_t cnt_len = read_file(str, &cnt);
     if (cnt_len == 0) {
         for (uint32_t k = (array_size(pattern) / 2); k < array_size(pattern); k++) {
-            sprintf(str, pattern[k], argv[1], PATH_SEP, getbe32(&tmd->Contents[0].ID));
+            sprintf(str, pattern[k], target_dir, PATH_SEP, getbe32(&tmd->Contents[0].ID));
             if (is_file(str))
                 break;
         }
@@ -597,7 +631,7 @@ int main_utf8(int argc, char** argv)
     aes_crypt_cbc(&ctx, AES_DECRYPT, cnt_len, iv, cnt, cnt);
 
     if (getbe32(cnt) != FST_MAGIC) {
-        sprintf(str, "%s%c%08X.dec", argv[1], PATH_SEP, getbe32(&tmd->Contents[0].ID));
+        sprintf(str, "%s%c%08X.dec", target_dir, PATH_SEP, getbe32(&tmd->Contents[0].ID));
         fprintf(stderr, "ERROR: Unexpected content magic. Dumping decrypted file as '%s'.\n", str);
         file_dump(str, cnt, cnt_len);
         goto out;
@@ -618,7 +652,7 @@ int main_utf8(int argc, char** argv)
 
     printf("FST entries: %u\n", entries);
 
-    char* dst_dir = ((argc <= 2) || is_file(argv[2])) ? argv[1] : argv[2];
+    char* dst_dir = ((argc <= 2) || is_file(argv[2])) ? target_dir : argv[2];
     printf("Extracting to directory: '%s'\n", dst_dir);
     create_path(dst_dir);
     char path[PATH_MAX] = { 0 };
@@ -669,7 +703,7 @@ int main_utf8(int argc, char** argv)
                 uint16_t tmd_flags = tmd->Contents[getbe16(&fe[i].ContentID)].Type;
                 // Handle upper/lowercase for target as well as files without extension
                 for (uint32_t k = 0; k < array_size(pattern); k++) {
-                    sprintf(str, pattern[k], argv[1], PATH_SEP, cnt_file_id);
+                    sprintf(str, pattern[k], target_dir, PATH_SEP, cnt_file_id);
                     if (is_file(str))
                         break;
                 }
