@@ -12,21 +12,21 @@ pkg update && pkg upgrade -y && pkg install -y git clang make && git clone https
 ## Usage
 
 ### Basic Usage
-Pass the path to a game directory (containing TMD and Ticket files):
+If your game folder is in `/sdcard/Download/`, just type its name:
 ```bash
-cdecrypt "/path/to/game_folder"
+cdecrypt "Game Folder Name"
 ```
+*Note: Use **"quotes"** if the name has spaces or parentheses.*
 
 ### Manual Title Key
-If a `title.tik` file is missing, provide the 32-character Title Key directly:
+If a `title.tik` file is missing, provide the 32-character Title Key:
 ```bash
-cdecrypt "/path/to/game_folder" 1500E19891AF46763AB79D95C341D48B
+cdecrypt "Game Folder Name" 1500E19891AF46763AB79D95C341D48B
 ```
 
 ## Notes
-- **Key Search:** Place a `keys.txt` in `/sdcard/Download/` for automatic Title Key discovery.
-- **Auto-Cleanup:** Encrypted source files are automatically removed after successful decryption to save storage.
-- **Shell Safety:** Always use **"quotes"** for paths containing spaces or parentheses.
+- **Key Search:** Place a `keys.txt` in `/sdcard/Download/` for automatic key discovery.
+- **Auto-Cleanup:** Encrypted source files are removed after successful decryption.
 
 ## Credits
 - Originally by **crediar**
