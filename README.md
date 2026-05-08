@@ -28,9 +28,6 @@ If you don't have a `title.tik` or `keys.txt`, you can provide the Title Key man
 cdecrypt "path/to/game_folder" 1500E19891AF46763AB79D95C341D48B
 ```
 
-## Build from Source
-If you prefer to build manually:
-```bash
 git clone https://github.com/manlemon223-prog/cdecrypt.git
 cd cdecrypt
 make
