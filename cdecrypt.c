@@ -349,6 +349,69 @@ out:
 }
 #undef BLOCK_SIZE
 
+#include <dirent.h>
+#include <ctype.h>
+
+static bool find_alternative_file(const char* dir_path, const char* pattern, char* out_path)
+{
+    DIR* dir = opendir(dir_path);
+    if (dir == NULL) return false;
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncasecmp(entry->d_name, pattern, strlen(pattern)) == 0) {
+            sprintf(out_path, "%s%c%s", dir_path, PATH_SEP, entry->d_name);
+            closedir(dir);
+            return true;
+        }
+    }
+    closedir(dir);
+    return false;
+}
+
+static bool find_key_in_file(const char* file_path, uint64_t title_id, uint8_t* out_key)
+{
+    FILE* f = fopen(file_path, "r");
+    if (f == NULL) return false;
+
+    char line[512];
+    char tid_str[17];
+    sprintf(tid_str, "%016" PRIx64, title_id);
+
+    while (fgets(line, sizeof(line), f)) {
+        char *p = line;
+        while (isspace(*p)) p++;
+        if (*p == '#' || *p == '\0') continue;
+
+        // Search for title ID in the line
+        char *found = strcasestr(line, tid_str);
+        if (found) {
+            // Look for a 32-char hex string (the key)
+            char *key_pos = NULL;
+            int hex_count = 0;
+            for (char *c = line; *c; c++) {
+                if (isxdigit(*c)) {
+                    if (hex_count == 0) key_pos = c;
+                    hex_count++;
+                } else {
+                    if (hex_count == 32) break;
+                    hex_count = 0;
+                }
+            }
+            if (hex_count == 32) {
+                for (int i = 0; i < 16; i++) {
+                    char hex[3] = { key_pos[i*2], key_pos[i*2+1], 0 };
+                    out_key[i] = (uint8_t)strtoul(hex, NULL, 16);
+                }
+                fclose(f);
+                return true;
+            }
+        }
+    }
+    fclose(f);
+    return false;
+}
+
 int main_utf8(int argc, char** argv)
 {
     int r = EXIT_FAILURE;
@@ -357,17 +420,30 @@ int main_utf8(int argc, char** argv)
     TitleMetaData* tmd = NULL;
     uint8_t *tik = NULL, *cnt = NULL;
     const char* pattern[] = { "%s%c%08x.app", "%s%c%08X.app", "%s%c%08x", "%s%c%08X" };
+    uint8_t manual_key[16];
+    bool has_manual_key = false;
 
     if (argc < 2) {
         printf("%s %s - Wii U NUS content file decrypter\n"
             "Copyright (c) 2020-2023 VitaSmith, Copyright (c) 2013-2015 crediar\n"
             "Visit https://github.com/VitaSmith/cdecrypt for official source and downloads.\n\n"
-            "Usage: %s <file or directory>\n\n"
+            "Usage: %s <file or directory> [title.tik or hex_key]\n\n"
             "This program is free software; you can redistribute it and/or modify it under\n"
             "the terms of the GNU General Public License as published by the Free Software\n"
             "Foundation; either version 3 of the License or any later version.\n",
             _appname(argv[0]), APP_VERSION_STR, _appname(argv[0]));
         return EXIT_SUCCESS;
+    }
+
+    // Check for manual hex key (32 chars)
+    if (argc >= 3 && strlen(argv[2]) == 32) {
+        char *endptr;
+        for (int i = 0; i < 16; i++) {
+            char hex[3] = { argv[2][i*2], argv[2][i*2+1], 0 };
+            manual_key[i] = (uint8_t)strtoul(hex, &endptr, 16);
+        }
+        has_manual_key = true;
+        printf("Using manual title key: %s\n", argv[2]);
     }
 
     if (!is_directory(argv[1])) {
@@ -380,7 +456,7 @@ int main_utf8(int argc, char** argv)
             free(buf);
             if (magic == TMD_MAGIC) {
                 tmd_path = strdup(argv[1]);
-                if (argc < 3) {
+                if (argc < 3 || has_manual_key) {
                     tik_path = strdup(argv[1]);
                     tik_path[strlen(tik_path) - 2] = 'i';
                     tik_path[strlen(tik_path) - 1] = 'k';
@@ -416,15 +492,51 @@ int main_utf8(int argc, char** argv)
         tik_path = calloc(size + 16, 1);
         sprintf(tmd_path, "%s%ctitle.tmd", argv[1], PATH_SEP);
         sprintf(tik_path, "%s%ctitle.tik", argv[1], PATH_SEP);
+
+        // Auto-discovery logic
+        if (!is_file(tmd_path)) {
+            if (find_alternative_file(argv[1], "tmd.", tmd_path)) {
+                printf("Found alternative TMD: %s\n", tmd_path);
+            }
+        }
+        if (!has_manual_key && !is_file(tik_path)) {
+            if (find_alternative_file(argv[1], "cetk", tik_path)) {
+                printf("Found alternative Ticket: %s\n", tik_path);
+            }
+        }
     }
 
     uint32_t tmd_len = read_file(tmd_path, (uint8_t**)&tmd);
     if (tmd_len == 0)
         goto out;
 
-    uint32_t tik_len = read_file(tik_path, &tik);
-    if (tik_len == 0)
-        goto out;
+    // Automated keys.txt search
+    if (!has_manual_key && !is_file(tik_path)) {
+        char kpath[PATH_MAX];
+        bool found_k = false;
+        
+        // Try current folder
+        sprintf(kpath, "%s%ckeys.txt", argv[1], PATH_SEP);
+        if (is_file(kpath) && find_key_in_file(kpath, getbe64(&tmd->TitleID), manual_key)) found_k = true;
+        
+        // Try parent folder (common for Download folders)
+        if (!found_k) {
+            sprintf(kpath, "%s%c..%ckeys.txt", argv[1], PATH_SEP, PATH_SEP);
+            if (is_file(kpath) && find_key_in_file(kpath, getbe64(&tmd->TitleID), manual_key)) found_k = true;
+        }
+
+        if (found_k) {
+            has_manual_key = true;
+            printf("Found Title Key in keys.txt for Title ID %016" PRIx64 "\n", getbe64(&tmd->TitleID));
+        }
+    }
+
+    uint32_t tik_len = 0;
+    if (!has_manual_key) {
+        tik_len = read_file(tik_path, &tik);
+        if (tik_len == 0)
+            goto out;
+    }
 
     if (tmd->Version != 1) {
         fprintf(stderr, "ERROR: Unsupported TMD version: %u\n", tmd->Version);
@@ -446,9 +558,13 @@ int main_utf8(int argc, char** argv)
     memset(title_id, 0, sizeof(title_id));
 
     memcpy(title_id, &tmd->TitleID, 8);
-    memcpy(title_key, tik + 0x1BF, 16);
-
-    aes_crypt_cbc(&ctx, AES_DECRYPT, sizeof(title_key), title_id, title_key, title_key);
+    if (has_manual_key) {
+        memcpy(title_key, manual_key, 16);
+    } else {
+        memcpy(title_key, tik + 0x1BF, 16);
+        aes_crypt_cbc(&ctx, AES_DECRYPT, sizeof(title_key), title_id, title_key, title_key);
+    }
+    
     aes_setkey_dec(&ctx, title_key, sizeof(title_key) * 8);
 
     uint8_t iv[16];
