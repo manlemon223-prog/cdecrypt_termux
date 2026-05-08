@@ -25,7 +25,7 @@ cdecrypt "Game Folder Name" 1500E19891AF46763AB79D95C341D48B
 ```
 
 ## Notes
-- **Key Search:** Place a `keys.txt` in `/sdcard/Download/` for automatic key discovery.
+- **Auto-Keygen:** If a `title.tik` is missing, `cdecrypt` will automatically generate one using the WiiUDownloader algorithm (mypass method).
 - **Auto-Cleanup:** Encrypted source files are removed after successful decryption.
 
 ## Credits
