@@ -504,7 +504,7 @@ int main_utf8(int argc, char** argv)
         printf("%s %s - Wii U NUS content file decrypter\n"
             "Copyright (c) 2020-2023 VitaSmith, Copyright (c) 2013-2015 crediar\n"
             "Visit https://github.com/VitaSmith/cdecrypt for official source and downloads.\n\n"
-            "Usage: %s <file or directory> [title.tik or hex_key]\n\n"
+            "Usage: %s <file or directory>\n\n"
             "This program is free software; you can redistribute it and/or modify it under\n"
             "the terms of the GNU General Public License as published by the Free Software\n"
             "Foundation; either version 3 of the License, or any later version.\n",
@@ -531,17 +531,6 @@ int main_utf8(int argc, char** argv)
         }
     }
 
-    // Check for manual hex key (32 chars)
-    if (argc >= 3 && strlen(argv[2]) == 32) {
-        char *endptr;
-        for (int i = 0; i < 16; i++) {
-            char hex[3] = { argv[2][i*2], argv[2][i*2+1], 0 };
-            manual_key[i] = (uint8_t)strtoul(hex, &endptr, 16);
-        }
-        has_manual_key = true;
-        printf("Using manual title key: %s\n", argv[2]);
-    }
-
     if (!is_directory(target_dir)) {
         uint8_t* buf = NULL;
         uint32_t size = read_file_max(target_dir, &buf, T_MAGIC_OFFSET + sizeof(uint64_t));
@@ -552,22 +541,14 @@ int main_utf8(int argc, char** argv)
             free(buf);
             if (magic == TMD_MAGIC) {
                 tmd_path = strdup(target_dir);
-                if (argc < 3 || has_manual_key) {
-                    tik_path = strdup(target_dir);
-                    tik_path[strlen(tik_path) - 2] = 'i';
-                    tik_path[strlen(tik_path) - 1] = 'k';
-                } else {
-                    tik_path = strdup(argv[2]);
-                }
+                tik_path = strdup(target_dir);
+                tik_path[strlen(tik_path) - 2] = 'i';
+                tik_path[strlen(tik_path) - 1] = 'k';
             } else if (magic == TIK_MAGIC) {
                 tik_path = strdup(target_dir);
-                if (argc < 3) {
-                    tmd_path = strdup(target_dir);
-                    tmd_path[strlen(tik_path) - 2] = 'm';
-                    tmd_path[strlen(tik_path) - 1] = 'd';
-                } else {
-                    tmd_path = strdup(argv[2]);
-                }
+                tmd_path = strdup(target_dir);
+                tmd_path[strlen(tik_path) - 2] = 'm';
+                tmd_path[strlen(tik_path) - 1] = 'd';
             }
         }
 

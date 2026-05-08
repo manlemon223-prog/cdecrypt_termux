@@ -18,12 +18,6 @@ cdecrypt "Game Folder Name"
 ```
 *Note: Use **"quotes"** if the name has spaces or parentheses.*
 
-### Manual Title Key
-If a `title.tik` file is missing, provide the 32-character Title Key:
-```bash
-cdecrypt "Game Folder Name" 1500E19891AF46763AB79D95C341D48B
-```
-
 ## Notes
 - **Auto-Keygen:** If a `title.tik` is missing, `cdecrypt` will automatically generate one using the WiiUDownloader algorithm (mypass method).
 - **Auto-Cleanup:** Encrypted source files are removed after successful decryption.
