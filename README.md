@@ -11,7 +11,7 @@ A Wii U NUS content file decrypter. This is a patched version of the VitaSmith c
 Copy and paste this command into Termux to install `cdecrypt` automatically:
 
 ```bash
-pkg update && pkg upgrade -y && pkg install -y git clang make && git clone https://github.com/manlemon223-prog/cdecrypt.git && cd cdecrypt && make && cp cdecrypt $PREFIX/bin/ && cd .. && rm -rf cdecrypt
+pkg update && pkg upgrade -y && pkg install -y git clang make && git clone https://github.com/manlemon223-prog/cdecrypt_termux.git && cd cdecrypt && make && cp cdecrypt $PREFIX/bin/ && cd .. && rm -rf cdecrypt
 ```
 
 ## Usage
@@ -28,7 +28,7 @@ If you don't have a `title.tik` or `keys.txt`, you can provide the Title Key man
 cdecrypt "path/to/game_folder" 1500E19891AF46763AB79D95C341D48B
 ```
 
-git clone https://github.com/manlemon223-prog/cdecrypt.git
+git clone https://github.com/manlemon223-prog/cdecrypt_termux.git
 cd cdecrypt
 make
 ```
