@@ -431,7 +431,7 @@ int main_utf8(int argc, char** argv)
             "Usage: %s <file or directory> [title.tik or hex_key]\n\n"
             "This program is free software; you can redistribute it and/or modify it under\n"
             "the terms of the GNU General Public License as published by the Free Software\n"
-            "Foundation; either version 3 of the License or any later version.\n",
+            "Foundation; either version 3 of the License, or any later version.\n",
             _appname(argv[0]), APP_VERSION_STR, _appname(argv[0]));
         return EXIT_SUCCESS;
     }
@@ -590,37 +590,39 @@ int main_utf8(int argc, char** argv)
     }
 
     memset(title_id, 0, sizeof(title_id));
+    uint64_t tid = getbe64(&tmd->TitleID);
+    for(int i=0; i<8; i++) title_id[i] = (uint8_t)(tid >> (56 - i*8));
 
-    memcpy(title_id, &tmd->TitleID, 8);
     if (has_manual_key) {
         memcpy(title_key, manual_key, 16);
     } else {
         memcpy(title_key, tik + 0x1BF, 16);
         aes_crypt_cbc(&ctx, AES_DECRYPT, sizeof(title_key), title_id, title_key, title_key);
     }
+
+    printf("Title ID: %016" PRIx64 "\n", tid);
     
     aes_setkey_dec(&ctx, title_key, sizeof(title_key) * 8);
 
     uint8_t iv[16];
     memset(iv, 0, sizeof(iv));
 
-    for (uint32_t k = 0; k < (array_size(pattern) / 2); k++) {
+    bool found_fst = false;
+    for (uint32_t k = 0; k < array_size(pattern); k++) {
         sprintf(str, pattern[k], target_dir, PATH_SEP, getbe32(&tmd->Contents[0].ID));
-        if (is_file(str))
+        if (is_file(str)) {
+            found_fst = true;
             break;
+        }
+    }
+
+    if (!found_fst) {
+        fprintf(stderr, "ERROR: Could not find first content file (ID %08X)\n", getbe32(&tmd->Contents[0].ID));
+        goto out;
     }
 
     uint32_t cnt_len = read_file(str, &cnt);
-    if (cnt_len == 0) {
-        for (uint32_t k = (array_size(pattern) / 2); k < array_size(pattern); k++) {
-            sprintf(str, pattern[k], target_dir, PATH_SEP, getbe32(&tmd->Contents[0].ID));
-            if (is_file(str))
-                break;
-        }
-        cnt_len = read_file(str, &cnt);
-        if (cnt_len == 0)
-            goto out;
-    }
+    if (cnt_len == 0) goto out;
 
     if (getbe64(&tmd->Contents[0].Size) != (uint64_t)cnt_len) {
         fprintf(stderr, "ERROR: Size of content %u is wrong: %u:%" PRIu64 "\n",
@@ -628,14 +630,41 @@ int main_utf8(int argc, char** argv)
         goto out;
     }
 
-    aes_crypt_cbc(&ctx, AES_DECRYPT, cnt_len, iv, cnt, cnt);
+    // Try normal decryption
+    uint8_t test_iv[16];
+    memset(test_iv, 0, 16);
+    uint8_t* test_cnt = malloc(cnt_len);
+    memcpy(test_cnt, cnt, cnt_len);
+    aes_crypt_cbc(&ctx, AES_DECRYPT, cnt_len, test_iv, test_cnt, test_cnt);
 
-    if (getbe32(cnt) != FST_MAGIC) {
-        sprintf(str, "%s%c%08X.dec", target_dir, PATH_SEP, getbe32(&tmd->Contents[0].ID));
-        fprintf(stderr, "ERROR: Unexpected content magic. Dumping decrypted file as '%s'.\n", str);
-        file_dump(str, cnt, cnt_len);
-        goto out;
+    if (getbe32(test_cnt) != FST_MAGIC) {
+        // Maybe the key provided was actually the encrypted one?
+        if (strcmp((char*)(&tmd->Issuer), "Root-CA00000003-CP0000000b") == 0) {
+            aes_setkey_dec(&ctx, WiiUCommonKey, 128);
+        }
+        uint8_t alt_key[16];
+        memcpy(alt_key, title_key, 16);
+        memset(test_iv, 0, 16);
+        for(int i=0; i<8; i++) test_iv[i] = (uint8_t)(tid >> (56 - i*8));
+        aes_crypt_cbc(&ctx, AES_DECRYPT, 16, test_iv, alt_key, alt_key);
+        
+        aes_setkey_dec(&ctx, alt_key, 128);
+        memset(test_iv, 0, 16);
+        memcpy(test_cnt, cnt, cnt_len);
+        aes_crypt_cbc(&ctx, AES_DECRYPT, cnt_len, test_iv, test_cnt, test_cnt);
+        
+        if (getbe32(test_cnt) == FST_MAGIC) {
+            printf("Detected encrypted Title Key. Automatic correction successful.\n");
+            memcpy(title_key, alt_key, 16);
+            memcpy(cnt, test_cnt, cnt_len);
+        } else {
+            fprintf(stderr, "ERROR: Decryption failed (Incorrect Title Key or corrupted files).\n");
+            goto out;
+        }
+    } else {
+        memcpy(cnt, test_cnt, cnt_len);
     }
+    free(test_cnt);
 
     struct FST* fst = (struct FST*)cnt;
 
