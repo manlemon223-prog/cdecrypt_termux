@@ -7,6 +7,8 @@ A Wii U NUS content file decrypter patched for Termux/Android. This version is d
 - **Global Key Search:** Place one `keys.txt` in your `/sdcard/Download/` folder, and `cdecrypt` will find the correct Title Key for any game automatically.
 - **Auto-Discovery:** Automatically finds TMD and Ticket files even if they have non-standard names (e.g., `tmd.17` or `cetk`).
 - **Manual Key Support:** Decrypt games without a `title.tik` file by providing the 32-character Title Key directly.
+- **Multi-Decrypt Logic:** Automatically detects if the provided key is encrypted (common in databases) and self-corrects if needed.
+- **Auto-Cleanup:** Automatically deletes encrypted `.app`, `.h3`, and TMD/Ticket files after a successful decryption to save storage space.
 
 ## Termux One-Line Setup
 Copy and paste this command into Termux to install `cdecrypt` automatically:

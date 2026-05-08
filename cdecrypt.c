@@ -155,25 +155,6 @@ struct FEntry
     uint16_t ContentID;
 };
 
-static bool file_dump(const char* path, void* buf, size_t len)
-{
-    assert(buf != NULL);
-    assert(len != 0);
-
-    FILE* dst = fopen_utf8(path, "wb");
-    if (dst == NULL) {
-        fprintf(stderr, "ERROR: Could not dump file '%s'\n", path);
-        return false;
-    }
-
-    bool r = (fwrite(buf, 1, len, dst) == len);
-    if (!r)
-        fprintf(stderr, "ERROR: Failed to dump file '%s'\n", path);
-
-    fclose(dst);
-    return r;
-}
-
 static __inline char ascii(char s)
 {
     if (s < 0x20) return '.';
@@ -754,6 +735,32 @@ int main_utf8(int argc, char** argv)
         }
     }
     r = EXIT_SUCCESS;
+
+    // Automatic storage cleanup after successful decryption
+    if (r == EXIT_SUCCESS) {
+        printf("\nDecryption complete. Cleaning up encrypted source files to save space...\n");
+        
+        // Delete all identified content files (.app and .h3)
+        uint32_t count = getbe16(&tmd->ContentCount);
+        for (uint32_t i = 0; i < count; i++) {
+            uint32_t cid = getbe32(&tmd->Contents[i].ID);
+            for (uint32_t k = 0; k < array_size(pattern); k++) {
+                sprintf(str, pattern[k], target_dir, PATH_SEP, cid);
+                if (is_file(str)) unlink(str);
+            }
+            // Also try deleting .h3 files
+            sprintf(str, "%s%c%08x.h3", target_dir, PATH_SEP, cid);
+            if (is_file(str)) unlink(str);
+            sprintf(str, "%s%c%08X.h3", target_dir, PATH_SEP, cid);
+            if (is_file(str)) unlink(str);
+        }
+
+        // Delete TMD and Ticket files
+        if (tmd_path && is_file(tmd_path)) unlink(tmd_path);
+        if (tik_path && is_file(tik_path)) unlink(tik_path);
+        
+        printf("Cleanup finished.\n");
+    }
 
 out:
     free(tmd);
