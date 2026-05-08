@@ -1,17 +1,9 @@
-# cdecrypt_termux (Smart Edition)
+# cdecrypt_termux
 
-A Wii U NUS content file decrypter patched for Termux/Android. This version is designed to be "smart"—it finds your folders and keys so you don't have to.
+A Wii U NUS content file decrypter optimized for Android (Termux).
 
-## Smart Features
-- **Fuzzy Folder Finder:** Just type the folder name. If it's not in your current directory, `cdecrypt` will automatically search for it in `/sdcard/Download/`.
-- **Global Key Search:** Place one `keys.txt` in your `/sdcard/Download/` folder, and `cdecrypt` will find the correct Title Key for any game automatically.
-- **Auto-Discovery:** Automatically finds TMD and Ticket files even if they have non-standard names (e.g., `tmd.17` or `cetk`).
-- **Manual Key Support:** Decrypt games without a `title.tik` file by providing the 32-character Title Key directly.
-- **Multi-Decrypt Logic:** Automatically detects if the provided key is encrypted (common in databases) and self-corrects if needed.
-- **Auto-Cleanup:** Automatically deletes encrypted `.app`, `.h3`, and TMD/Ticket files after a successful decryption to save storage space.
-
-## Termux One-Line Setup
-Copy and paste this command into Termux to install `cdecrypt` automatically:
+## Installation
+Run this one-line command to install `cdecrypt` to your system:
 
 ```bash
 pkg update && pkg upgrade -y && pkg install -y git clang make && git clone https://github.com/manlemon223-prog/cdecrypt_termux.git && cd cdecrypt_termux && make && cp cdecrypt $PREFIX/bin/ && cd .. && rm -rf cdecrypt_termux
@@ -19,25 +11,24 @@ pkg update && pkg upgrade -y && pkg install -y git clang make && git clone https
 
 ## Usage
 
-### 1. The Easy Way (Folder Name Only)
-If your game folder is in `/sdcard/Download/`, you can just type its name:
+### Basic Usage
+Pass the path to a game directory (containing TMD and Ticket files):
 ```bash
-cdecrypt "Game Folder Name"
-```
-*Note: Always use **"quotes"** if the folder name has spaces or parentheses ( ) to avoid shell errors.*
-
-### 2. Manual Path
-```bash
-cdecrypt "/sdcard/Download/MyGame"
+cdecrypt "/path/to/game_folder"
 ```
 
-### 3. Manual Title Key
-If you don't have a `keys.txt`, you can provide the Title Key manually:
+### Manual Title Key
+If a `title.tik` file is missing, provide the 32-character Title Key directly:
 ```bash
-cdecrypt "Game Folder" 1500E19891AF46763AB79D95C341D48B
+cdecrypt "/path/to/game_folder" 1500E19891AF46763AB79D95C341D48B
 ```
+
+## Notes
+- **Key Search:** Place a `keys.txt` in `/sdcard/Download/` for automatic Title Key discovery.
+- **Auto-Cleanup:** Encrypted source files are automatically removed after successful decryption to save storage.
+- **Shell Safety:** Always use **"quotes"** for paths containing spaces or parentheses.
 
 ## Credits
 - Originally by **crediar**
 - Maintained by **VitaSmith**
-- Smart features & Android patches by **manlemon223-prog**
+- Termux optimization by **manlemon223-prog**
